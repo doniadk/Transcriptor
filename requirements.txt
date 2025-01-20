@@ -1,5 +1,5 @@
 flask
 openai-whisper
 libretranslate
-tensorflow
+pydub
 transformers
