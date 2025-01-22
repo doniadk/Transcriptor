@@ -1,8 +1,8 @@
 from flask import Flask, request, render_template, jsonify
-from moviepy import VideoFileClip
-from pydub import AudioSegment
 import whisper
-import os
+import functions as f
+from googletrans import Translator
+from transformers import pipeline
 
 app = Flask(__name__) # __name__ :file
 
@@ -12,79 +12,58 @@ model = whisper.load_model("small")
 def index():
     return render_template("index.html")
 
+
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
 
+    file = request.files['file']
     if file not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
-
-    file = request.files['file']
-
-    # Save the uploaded file temporarily
-    temp_input_path = "temp_input" + file.filename.split('.')[-1]
-    file.save(temp_input_path)
-
-    try:
-        # process video file
-        if temp_input_path.lower().endswith(("mp4", "wov", "avi", "webm", "wmv", "avchd", "flv")):
-
-            # extract audio from video
-            video_clip = VideoFileClip(file).audio
-
-            # write audio in file
-            temp_audio_path = "temp_audio.mp3"
-            video_clip.write_audiofile(temp_audio_path)
-            video_clip.close()
-
-        else:
-            temp_audio_path = temp_input_path # assume it's already an audio file
-        
-        # transcribe using speech-to-text
-        # whisper expects 16 kHz mono audio
-        audio = AudioSegment.from_file(temp_audio_path)
-        if audio.frame_rate != 16000 or audio.channels != 1:
-            audio = audio.set_frame_rate(16000).set_channels(1)
-        
-        # Save processed audio to temporary WAV file
-        temp_wav_path = "temp_audio.wav"
-        audio.export(temp_wav_path, format="wav")
-
-        result = model.transcribe(temp_wav_path)
-
-        # return the transcript to the frontend
-        return jsonify({"transcription": result["text"]})
-
-    finally:
-        # Clean up temporary files
-        if os.path.exists(temp_input_path):
-            os.remove(temp_input_path)
-        if os.path.exists(temp_audio_path) and temp_audio_path != temp_input_path:
-            os.remove(temp_audio_path)
-        if os.path.exists(temp_wav_path):
-            os.remove(temp_wav_path)
+    
+    audio = f.process_audio(file)
+    transcript = f.transcribe(audio, model)
+    return jsonify(transcript)
 
 
 @app.route('/translate', methods=['POST'])
-def translate():
-    """
-    Accepts the transcript and the target language.
+def translate(transcript, lan):
+
+    tl = Translator(service_urls=[
+        'translate.google.com',
+        'translate.google.co.kr',
+    ]) 
+    output = tl.translate(transcript, dest=lan)
     
-    Returns the translated text."""
+    return jsonify(output)
+
 
 @app.route('/summarize', methods=['POST'])
-def summarize():
-    '''
-    Accepts the transcript.
-    
-    Returns a summarized version of the text.'''   
+def summarize(transcript):
+
+    # transcript must be text ( str )
+    summarize = pipeline(task="summarization", model="facebook/bart-large-cnn")
+    output = summarize(
+    transcript, 
+    min_length=50,
+    max_length=100 )
+    return jsonify(output[0]['summary_text'])
+
 
 @app.route('/download', methods=['POST'])
 def download(transcript, summary=None):
-    '''
-    Accepts the transcript (and optional summary).
-    
-    Generates a downloadable file and sends it back to the user.
-    '''
+   
+    text_formated = "\n".join([segment['text'] for segment in transcript])
+    tl = Translator(service_urls=[
+        'translate.google.com',
+        'translate.google.co.kr',
+    ]) 
+    ln_text = tl.detect(transcript).lang
+    if summary:
+        ln_summary = tl.detect(summary).lang
+    pdf = f.create_PDF(text_formated, ln_text, ln_summary=None, summary=None)
+    return pdf
+
+
 
 if __name__ == "__main__":
     app.run(debug=True)
