@@ -9,3 +9,7 @@ env/
 
 # IDE settings
 .vscode/
+
+*.pdf
+*.mp3
+*.mp4
