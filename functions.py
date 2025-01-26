@@ -5,15 +5,22 @@ import arabic_reshaper
 from fpdf import FPDF
 import os
 
-def process_audio(file):
-    if file.lower().endswith(("mp3", "aac", "wav")):
+def process_audio(file):    # file object is FileStorage object not str
+    filename = file.filename
+    if filename.lower().endswith(("mp3", "aac", "wav")):
         return AudioSegment.from_file(file, format=file.split('.')[-1])
-    elif file.lower().endswith(("mp4", "avi", "mov", "webm", "wmv")):
-        video_clip = VideoFileClip(file)
-        audio_clip = video_clip.audio
-        audio_path = "extracted_audio.mp3"
-        audio_clip.write_audiofile(audio_path)
-        audio_clip.close()
+    elif filename.lower().endswith(("mp4", "avi", "mov", "webm", "wmv")):
+        temp_video_path = "temp_video." + filename.split('.')[-1]
+        file.save(temp_video_path)  # Save the file locally
+        with VideoFileClip(temp_video_path) as video_clip:
+            audio_clip = video_clip.audio
+            audio_path = "extracted_audio.mp3"
+
+            # Export audio and close the video clip
+            audio_clip.write_audiofile(audio_path)
+            audio_clip.close()
+        # Remove the temporary video file
+        os.remove(temp_video_path)
         audio = AudioSegment.from_file(audio_path, format="mp3")
         os.remove(audio_path)
         return audio
@@ -37,6 +44,7 @@ def transcribe(audio, model):
         }
         for segment in result['segments']
     ]
+    os.remove("temp_audio.wav")
     return transcription_with_timestamps
 
 

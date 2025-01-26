@@ -3,3 +3,5 @@ openai-whisper
 googletrans
 pydub
 transformers
+fpdf2
+moviepy
